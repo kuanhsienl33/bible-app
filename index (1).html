@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bible Olympics 2025 Tracker App</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f5f5f5; }
+    header { text-align: center; padding: 1rem; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    header img { height: 80px; vertical-align: middle; }
+    header h1 { display: inline-block; margin-left: 0.5rem; font-size: 1.8rem; vertical-align: middle; }
+    nav { background: #333; display: flex; justify-content: center; }
+    nav button { background: none; border: none; color: white; padding: 1rem 2rem; cursor: pointer; font-size: 1rem; }
+    nav button.active { background: #007acc; }
+    section { display: none; padding: 2rem; max-width: 900px; margin: auto; }
+    section.active { display: block; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: center; }
+    .form-grid label { font-weight: bold; }
+    .form-grid input { padding: 0.5rem; width: 100%; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    .event { margin-bottom: 1.5rem; }
+    .event h3 { margin-bottom: 0.5rem; }
+    .points { margin-top: 1rem; }
+    .points li { margin: 0.2rem 0; }
+    button.delete { margin-left: 0.5rem; color: #c00; }
+    #undoBtn { margin-bottom: 1rem; }
+  </style>
+  <!-- Firebase Modular SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-analytics.js";
+    import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, setDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+    // Firebase config (replace with yours)
+    const firebaseConfig = {
+      apiKey: "AIzaSyC9tvNea5wLF4DBqaZvvJ6Vk-D-PjjEAJQ",
+      authDomain: "bible-olympics.firebaseapp.com",
+      projectId: "bible-olympics",
+      storageBucket: "bible-olympics.firebasestorage.app",
+      messagingSenderId: "551329783255",
+      appId: "1:551329783255:web:f6146c8098284e4825ff92",
+      measurementId: "G-NNBHRLH0F7"
+    };
+
+    // Initialize Firebase + Firestore
+    const app = initializeApp(firebaseConfig);
+    getAnalytics(app);
+    const db = getFirestore(app);
+    const teamsCol = collection(db, 'teams');
+
+    // Undo state
+    let lastDeleted = null;
+    const undoBtn = document.getElementById('undoBtn');
+
+    // Registration UI refs
+    const form = document.getElementById('registrationForm');
+    const tbody = document.querySelector('#teamsTable tbody');
+
+    // Leaderboard UI refs
+    const lbBody = document.querySelector('#leaderboardTable tbody');
+    const lbQuery = query(teamsCol, orderBy('score', 'desc'));
+
+    // Real-time listener: Registration list
+    onSnapshot(teamsCol, snapshot => {
+      tbody.innerHTML = '';
+      snapshot.forEach(docSnap => {
+        const team = { id: docSnap.id, ...docSnap.data() };
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${team.name}</td>
+          <td>${team.members.map(m => `${m.name} (${m.age})`).join(', ')}</td>
+          <td><button class="delete" onclick="deleteTeam('${team.id}')">Delete</button></td>
+        `;
+        tbody.appendChild(row);
+      });
+    });
+
+    // Real-time listener: Leaderboard
+    onSnapshot(lbQuery, snapshot => {
+      lbBody.innerHTML = '';
+      let rank = 1;
+      snapshot.forEach(docSnap => {
+        const { name, score } = docSnap.data();
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${rank++}</td><td>${name}</td><td>${score}</td>`;
+        lbBody.appendChild(row);
+      });
+    });
+
+    // Add team
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const newTeam = {
+        name: form.teamName.value.trim(),
+        members: [
+          { name: form.member1.value.trim(), age: +form.age1.value },
+          { name: form.member2.value.trim(), age: +form.age2.value },
+          { name: form.member3.value.trim(), age: +form.age3.value }
+        ],
+        score: 0
+      };
+      await addDoc(teamsCol, newTeam);
+      form.reset();
+    });
+
+    // Delete team and enable undo
+    window.deleteTeam = async id => {
+      const ref = doc(db, 'teams', id);
+      const snap = await ref.get();
+      lastDeleted = { id, data: snap.data() };
+      await deleteDoc(ref);
+      undoBtn.disabled = false;
+    };
+
+    // Undo deletion
+    window.undoDelete = async () => {
+      if (!lastDeleted) return;
+      const { id, data } = lastDeleted;
+      await setDoc(doc(db, 'teams', id), data);
+      lastDeleted = null;
+      undoBtn.disabled = true;
+    };
+
+    // Tab switcher
+    window.switchTab = id => {
+      document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      document.querySelector(`nav button[onclick*="${id}"]`).classList.add('active');
+    };
+
+  </script>
+</head>
+<body>
+  <header>
+    <img src="olympics logo.png" alt="Bible Olympics Logo" />
+    <h1>Bible Olympics 2025 Tracker App</h1>
+  </header>
+
+  <nav>
+    <button onclick="switchTab('registration')" class="active">Team Registration</button>
+    <button onclick="switchTab('scores')">Scores</button>
+    <button onclick="switchTab('summary')">Event Summary</button>
+    <button onclick="switchTab('leaderboard')">Live Leaderboard</button>
+  </nav>
+
+  <section id="registration" class="active">
+    <h2>Team Registration</h2>
+    <button id="undoBtn" onclick="undoDelete()" disabled>Undo Delete</button>
+    <form id="registrationForm">
+      <div class="form-grid">
+        <label for="teamName">Team Name</label><input type="text" id="teamName" required />
+        <label for="member1">Member 1 Name</label><input type="text" id="member1" required />
+        <label for="age1">Member 1 Age</label><input type="number" id="age1" min="1" required />
+        <label for="member2">Member 2 Name</label><input type="text" id="member2" required />
+        <label for="age2">Member 2 Age</label><input type="number" id="age2" min="1" required />
+        <label for="member3">Member 3 Name</label><input type="text" id="member3" required />
+        <label for="age3">Member 3 Age</label><input type="number" id="age3" min="1" required />
+      </div>
+      <button type="submit" style="margin-top:1rem;">Add Team</button>
+    </form>
+    <table id="teamsTable">
+      <thead>
+        <tr><th>Team</th><th>Members (Age)</th><th>Actions</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section id="scores">
+    <h2>Score Systems</h2>
+    <ol>
+      <li>Sword Drill Showdown</li>
+      <li>Books of the Bible Relay</li>
+      <li>Bible Memorization</li>
+      <li>Bible Trivia Questions</li>
+    </ol>
+    <ul class="points">
+      <li><strong>Placements:</strong> 1st=10 pts, 2nd=7 pts, 3rd=5 pts, 4th=2 pts</li>
+      <li><strong>Bonus:</strong> +3 pts (Best Team Spirit), +2 pts (Knowledge), +2 pts (Fastest Finders), +1 pt (Best Team Name)</li>
+      <li><strong>Max per team:</strong> 48 pts</li>
+    </ul>
+  </section>
+
+  <section id="summary">
+    <h2>Event Summary</h2>
+    <div class="event"><h3>Sword Drill Showdown</h3><p>One runner per round races to find and read a called‑out verse from a closed Bible. 3 verses per team (9 total). Emphasizes Speed, Knowledge/Memory, Physical Agility, & Teamwork.</p></div>
+    <div class="event"><h3>Books of the Bible Relay</h3><p>Teams race to place shuffled OT/NT book cards in correct order relay‑style. Emphasizes Speed, Knowledge/Memory, Physical Agility, & Teamwork.</p></div>
+    <div class="event"><h3>Bible Memorization</h3><p>Teams work together to unscramble and write a memory verse, with bonus for perfect recitation. Emphasizes Speed, Accuracy (Knowledge), Movement, & Teamwork.</p></div>
+    <div class="event"><h3>Bible Trivia Questions</h3><p>Seated players ring a bell to answer packet questions; correct buzz‑in earns points. Tests Fast Recall, Biblical Knowledge, Movement, & Teamwork.</p></div>
+  </section>
+
+  <section id="leaderboard">
+    <h2>Live Leaderboard</h2>
+    <table id="leaderboardTable">
+      <thead><tr><th>Rank</th><th>Team</th><th>Score</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+</body>
+</html>
